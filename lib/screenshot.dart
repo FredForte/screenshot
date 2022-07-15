@@ -44,16 +44,19 @@ class ScreenshotController {
   Future<Uint8List?> capture({
     double? pixelRatio,
     Duration delay = const Duration(milliseconds: 20),
+    Size? targetSize,
   }) {
     //Delay is required. See Issue https://github.com/flutter/flutter/issues/22308
     return new Future.delayed(delay, () async {
       try {
+        print('capture running');
         ui.Image? image = await captureAsUiImage(
           delay: Duration.zero,
           pixelRatio: pixelRatio,
+          targetSize: targetSize,
         );
-        ByteData? byteData =
-            await image?.toByteData(format: ui.ImageByteFormat.png);
+        print('image print: --------- $image');
+        ByteData? byteData = await image?.toByteData(format: ui.ImageByteFormat.png);
         image?.dispose();
 
         Uint8List? pngBytes = byteData?.buffer.asUint8List();
@@ -65,23 +68,29 @@ class ScreenshotController {
     });
   }
 
-  Future<ui.Image?> captureAsUiImage(
-      {double? pixelRatio: 1,
-      Duration delay: const Duration(milliseconds: 20)}) {
+  Future<ui.Image?> captureAsUiImage({
+    double? pixelRatio: 1,
+    Duration delay: const Duration(milliseconds: 20),
+    Size? targetSize,
+  }) {
+    print('captureAsUiImage running');
     //Delay is required. See Issue https://github.com/flutter/flutter/issues/22308
     return new Future.delayed(delay, () async {
+      bool isDirty = false;
       try {
-        var findRenderObject =
-            this._containerKey.currentContext?.findRenderObject();
+        var findRenderObject = this._containerKey.currentContext?.findRenderObject();
         if (findRenderObject == null) {
           return null;
         }
-        RenderRepaintBoundary boundary =
-            findRenderObject as RenderRepaintBoundary;
+
+        //! added start
+        RenderRepaintBoundary boundary = findRenderObject as RenderRepaintBoundary;
+        print('going to run .layout');
+        boundary.layout(BoxConstraints(maxHeight: targetSize?.height ?? 2000, maxWidth: targetSize?.width ?? 800), parentUsesSize: true);
+        //! added end
         BuildContext? context = _containerKey.currentContext;
         if (pixelRatio == null) {
-          if (context != null)
-            pixelRatio = pixelRatio ?? MediaQuery.of(context).devicePixelRatio;
+          if (context != null) pixelRatio = pixelRatio ?? MediaQuery.of(context).devicePixelRatio;
         }
         ui.Image image = await boundary.toImage(pixelRatio: pixelRatio ?? 1);
         return image;
@@ -105,13 +114,8 @@ class ScreenshotController {
     BuildContext? context,
     Size? targetSize,
   }) async {
-    ui.Image image = await widgetToUiImage(widget,
-        delay: delay,
-        pixelRatio: pixelRatio,
-        context: context,
-        targetSize: targetSize);
-    final ByteData? byteData =
-        await image.toByteData(format: ui.ImageByteFormat.png);
+    ui.Image image = await widgetToUiImage(widget, delay: delay, pixelRatio: pixelRatio, context: context, targetSize: targetSize);
+    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
 
     return byteData!.buffer.asUint8List();
@@ -150,18 +154,14 @@ class ScreenshotController {
 
     final RenderRepaintBoundary repaintBoundary = RenderRepaintBoundary();
 
-    Size logicalSize = targetSize ??
-        ui.window.physicalSize / ui.window.devicePixelRatio; // Adapted
+    Size logicalSize = targetSize ?? ui.window.physicalSize / ui.window.devicePixelRatio; // Adapted
     Size imageSize = targetSize ?? ui.window.physicalSize; // Adapted
 
-    assert(logicalSize.aspectRatio.toStringAsPrecision(5) ==
-        imageSize.aspectRatio
-            .toStringAsPrecision(5)); // Adapted (toPrecision was not available)
+    assert(logicalSize.aspectRatio.toStringAsPrecision(5) == imageSize.aspectRatio.toStringAsPrecision(5)); // Adapted (toPrecision was not available)
 
     final RenderView renderView = RenderView(
       window: ui.window,
-      child: RenderPositionedBox(
-          alignment: Alignment.center, child: repaintBoundary),
+      child: RenderPositionedBox(alignment: Alignment.center, child: repaintBoundary),
       configuration: ViewConfiguration(
         size: logicalSize,
         devicePixelRatio: pixelRatio ?? 1.0,
@@ -181,13 +181,12 @@ class ScreenshotController {
     pipelineOwner.rootNode = renderView;
     renderView.prepareInitialFrame();
 
-    final RenderObjectToWidgetElement<RenderBox> rootElement =
-        RenderObjectToWidgetAdapter<RenderBox>(
-            container: repaintBoundary,
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: child,
-            )).attachToRenderTree(
+    final RenderObjectToWidgetElement<RenderBox> rootElement = RenderObjectToWidgetAdapter<RenderBox>(
+        container: repaintBoundary,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: child,
+        )).attachToRenderTree(
       buildOwner,
     );
     ////
@@ -213,8 +212,7 @@ class ScreenshotController {
       ///
       isDirty = false;
 
-      image = await repaintBoundary.toImage(
-          pixelRatio: pixelRatio ?? (imageSize.width / logicalSize.width));
+      image = await repaintBoundary.toImage(pixelRatio: pixelRatio ?? (imageSize.width / logicalSize.width));
 
       ///
       ///This delay sholud increas with Widget tree Size
